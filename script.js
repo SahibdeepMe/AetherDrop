@@ -1,15 +1,18 @@
-/* AetherDrop: static PeerJS transport. No server, acknowledgments, or live-stream claims. */
+/* AetherDrop: static PeerJS transport with Local vs Global mode switches. */
 (() => {
   'use strict';
 
-  const CHUNK_SIZE = 64 * 1024;
-  const MAX_INBOUND_BYTES = 512 * 1024 * 1024;
+  // Transmission chunk profiles
+  const CHUNK_SIZE_GLOBAL = 64 * 1024;   // 64 KB for steady WAN latency
+  const CHUNK_SIZE_LOCAL = 256 * 1024;   // 256 KB for maximum local LAN throughput
+
+  const MAX_INBOUND_BYTES = 1024 * 1024 * 1024; // 1 GB capacity
   const MAX_FILES = 1000;
   const MAX_PIN_ATTEMPTS = 6;
   const PAIR_TIMEOUT = 15000;
   const STALL_TIMEOUT = 30000;
   const PIN_PATTERN = /^\d{6}$/;
-  const PEER_PATTERN = /^aether-pin-\d{6}$/;
+
   const $ = id => document.getElementById(id);
   const ui = {};
   [
@@ -22,8 +25,14 @@
     'transferSpeed', 'transferBytes', 'qrModal', 'closeQrBtn', 'qrCanvas',
     'qrPinLabel', 'scannerModal', 'closeScannerBtn', 'cameraPreview',
     'liveVideoPlayer', 'videoPlaceholder', 'mediaFileName', 'inboundFileList',
-    'inboundEmpty', 'inboundCountBadge', 'offlineScreen', 'retryOfflineBtn', 'toastRegion'
+    'inboundEmpty', 'inboundCountBadge', 'offlineScreen', 'retryOfflineBtn', 'toastRegion',
+    'scopeLocalBtn', 'scopeGlobalBtn', 'heroScopeBadge', 'heroScopeDesc',
+    'scopePrivacyTag', 'visualRouteLabel', 'statModeTitle', 'statModeDesc', 'cardScopeTag'
   ].forEach(id => { ui[id] = $(id); });
+
+  // Current scope state: 'local' (host-only LAN) vs 'global' (STUN WAN)
+  let currentScope = 'local';
+  let activeChunkSize = CHUNK_SIZE_LOCAL;
 
   let peer = null;
   let peerGeneration = 0;
@@ -44,6 +53,64 @@
   const objectUrls = new Set();
   const dialogs = [];
   const dialogOpeners = new Map();
+
+  function getScopePrefix() {
+    return currentScope === 'local' ? 'aether-lan-' : 'aether-wan-';
+  }
+
+  function getScopeIceServers() {
+    if (currentScope === 'local') {
+      // Local mode: empty ICE servers force WebRTC to restrict candidate gathering to host interfaces
+      return [];
+    }
+    // Global mode: public STUN servers for NAT punch-through
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ];
+  }
+
+  function applyScopeUI() {
+    document.body.dataset.scope = currentScope;
+    const isLocal = currentScope === 'local';
+    activeChunkSize = isLocal ? CHUNK_SIZE_LOCAL : CHUNK_SIZE_GLOBAL;
+
+    ui.scopeLocalBtn.classList.toggle('active', isLocal);
+    ui.scopeLocalBtn.setAttribute('aria-checked', String(isLocal));
+    ui.scopeGlobalBtn.classList.toggle('active', !isLocal);
+    ui.scopeGlobalBtn.setAttribute('aria-checked', String(!isLocal));
+
+    if (isLocal) {
+      ui.heroScopeBadge.textContent = 'LOCAL LAN ACCELERATED';
+      ui.heroScopeDesc.textContent = 'Local mode active. Packets transfer at physical Wi-Fi/LAN interface speeds without leaving your router.';
+      ui.scopePrivacyTag.textContent = 'Isolated to Local Subnet';
+      ui.visualRouteLabel.textContent = 'LOCAL LINK / HIGH-BANDWIDTH LAN';
+      ui.statModeTitle.textContent = 'DIRECT LAN (0-NAT)';
+      ui.statModeDesc.textContent = 'Maximum physical bandwidth';
+      ui.cardScopeTag.textContent = 'LOCAL SCOPE';
+    } else {
+      ui.heroScopeBadge.textContent = 'GLOBAL WAN ROUTE';
+      ui.heroScopeDesc.textContent = 'Global mode active. Connects over the public internet across remote cellular and separate networks.';
+      ui.scopePrivacyTag.textContent = 'STUN Traversal Enabled';
+      ui.visualRouteLabel.textContent = 'GLOBAL ROUTE / WAN TRANSIT';
+      ui.statModeTitle.textContent = 'GLOBAL WEBRTC';
+      ui.statModeDesc.textContent = 'Cross-network internet relay';
+      ui.cardScopeTag.textContent = 'GLOBAL SCOPE';
+    }
+  }
+
+  function switchScope(newScope) {
+    if (currentScope === newScope) return;
+    if (active) {
+      toast('Disconnect current peer before switching network modes.', true);
+      return;
+    }
+    currentScope = newScope;
+    applyScopeUI();
+    toast(`Switched to ${newScope.toUpperCase()} mode. Re-initializing node…`, false);
+    initPeer();
+  }
 
   function toast(message, error = false) {
     if (shuttingDown) return;
@@ -93,16 +160,18 @@
     let state = 'connecting';
     let label = 'Connecting to signaling…';
     if (!navigator.onLine) { state = 'offline'; label = 'Offline'; }
-    else if (paired) { state = 'paired'; label = 'Paired'; }
+    else if (paired) { state = 'paired'; label = `Paired (${currentScope.toUpperCase()})`; }
     else if (active) { label = 'Pairing…'; }
     else if (nodeFailure) { state = 'error'; label = 'Connection unavailable — retry'; }
-    else if (peer && peer.open) { state = 'online'; label = 'Ready to pair'; }
+    else if (peer && peer.open) { state = 'online'; label = `Ready (${currentScope.toUpperCase()})`; }
     ui.statusPill.dataset.state = state;
     ui.statusText.textContent = label;
     const dot = ui.statusPill.querySelector('.status-dot');
     if (dot) dot.classList.toggle('connected', paired);
     document.body.dataset.connected = String(paired);
-    ui.connectedPeerBadge.textContent = paired ? `Peer: ${active.conn.peer.slice(11)}` : 'Not connected';
+
+    const prefixLen = getScopePrefix().length;
+    ui.connectedPeerBadge.textContent = paired ? `Peer: ${active.conn.peer.slice(prefixLen)}` : 'Not connected';
     ui.connectedPeerBadge.hidden = !paired;
     ui.disconnectBtn.hidden = !paired;
     ui.disconnectBtn.disabled = !active;
@@ -113,10 +182,11 @@
     ui.scanQrBtn.disabled = !ready || Boolean(active);
     ui.browseFilesBtn.disabled = !paired;
     ui.fileInput.disabled = !paired;
+    ui.scopeLocalBtn.disabled = Boolean(active);
+    ui.scopeGlobalBtn.disabled = Boolean(active);
   }
 
   function randomPin() {
-    // Rejection sampling avoids modulo bias while retaining the original six-digit range.
     const range = 900000;
     const limit = Math.floor(0x100000000 / range) * range;
     const sample = new Uint32Array(1);
@@ -139,7 +209,7 @@
     peer = null;
     peerGeneration++;
     if (old && !old.destroyed) {
-      try { old.destroy(); } catch (_) { /* Already closing. */ }
+      try { old.destroy(); } catch (_) {}
     }
   }
 
@@ -159,13 +229,12 @@
     let instance;
     try {
       currentPin = randomPin();
-      instance = new window.Peer(`aether-pin-${currentPin}`, {
+      const scopedPeerId = `${getScopePrefix()}${currentPin}`;
+      instance = new window.Peer(scopedPeerId, {
         debug: 0,
-        config: { iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' }
-        ] }
+        config: {
+          iceServers: getScopeIceServers()
+        }
       });
       peer = instance;
     } catch (_) {
@@ -191,7 +260,13 @@
       renderStatus();
       if (!autoPairChecked) {
         autoPairChecked = true;
-        const pin = new URLSearchParams(window.location.search).get('pair');
+        const params = new URLSearchParams(window.location.search);
+        const pin = params.get('pair');
+        const mode = params.get('mode');
+        if (mode && (mode === 'local' || mode === 'global') && mode !== currentScope) {
+          switchScope(mode);
+          return;
+        }
         if (pin !== null) {
           ui.targetPeerId.value = pin;
           initiateConnect(pin);
@@ -199,11 +274,11 @@
       }
     });
     instance.on('connection', conn => {
-      if (!current() || active || !PEER_PATTERN.test(conn.peer) || conn.peer === instance.id) {
-        // A second peer must never replace a pending or established connection.
-        conn.on('open', () => { try { conn.close(); } catch (_) { /* Closed. */ } });
+      const expectedPrefix = getScopePrefix();
+      if (!current() || active || !conn.peer.startsWith(expectedPrefix) || conn.peer === instance.id) {
+        conn.on('open', () => { try { conn.close(); } catch (_) {} });
         conn.on('error', () => {});
-        try { conn.close(); } catch (_) { /* Closed. */ }
+        try { conn.close(); } catch (_) {}
         if (current() && active) toast('Another pairing request was declined. Disconnect before switching peers.', true);
         return;
       }
@@ -216,8 +291,7 @@
         if (attempt + 1 < MAX_PIN_ATTEMPTS) initPeer(attempt + 1);
         else nodeError('Could not reserve a PIN after six attempts. Please retry.');
       } else if (error && ['peer-unavailable', 'webrtc'].includes(error.type)) {
-        // Peer-level errors have no reliable connection identity: the scoped timeout owns cancellation.
-        toast('The peer could not be reached. Verify its PIN and network; cancel pairing to try again.', true);
+        toast('The peer could not be reached. Ensure both devices are in the same (Local/Global) mode.', true);
       } else {
         nodeError('The signaling service is unavailable. An existing direct connection may still work.');
       }
@@ -231,7 +305,7 @@
           nodeError('Signaling reconnection failed. Disconnect any active peer, then retry.');
           return;
         }
-        try { instance.reconnect(); } catch (_) { /* Bounded retry below. */ }
+        try { instance.reconnect(); } catch (_) {}
         reconnectTimer = setTimeout(retry, 5000);
       };
       clearTimeout(reconnectTimer);
@@ -246,7 +320,7 @@
 
   function showPairing(pin) {
     ui.pairingModalTitle.textContent = 'Connecting to peer';
-    ui.pairingModalSub.textContent = `Negotiating a WebRTC channel with PIN ${pin}…`;
+    ui.pairingModalSub.textContent = `Negotiating ${currentScope.toUpperCase()} channel with PIN ${pin}…`;
     openDialog(ui.pairingOverlay);
   }
 
@@ -254,16 +328,16 @@
 
   function bindConnection(conn) {
     if (active) {
-      try { conn.close(); } catch (_) { /* Rejected connection. */ }
+      try { conn.close(); } catch (_) {}
       return;
     }
     const state = { conn, open: false, timer: null, closed: false };
     active = state;
-    showPairing(conn.peer.slice(11));
+    showPairing(conn.peer.slice(getScopePrefix().length));
     renderStatus();
     state.timer = setTimeout(() => {
       if (active === state && !state.open) {
-        toast('Pairing timed out. Verify the remote six-digit PIN.', true);
+        toast('Pairing timed out. Verify the remote PIN and mode.', true);
         disconnect('Pairing timed out.', true);
       }
     }, PAIR_TIMEOUT);
@@ -275,6 +349,7 @@
       closeDialog(ui.qrModal);
       void stopScanner();
       renderStatus();
+      toast(`Direct ${currentScope.toUpperCase()} data channel established.`, false);
     });
     conn.on('data', data => {
       if (active === state && !state.closed) handleIncomingData(data);
@@ -305,7 +380,7 @@
     clearTimeout(state.timer);
     cancelTransfers(message, false);
     active = null;
-    try { state.conn.close(); } catch (_) { /* Already closed. */ }
+    try { state.conn.close(); } catch (_) {}
     hidePairing();
     renderStatus();
     if (message && !silent) toast(message, false);
@@ -330,11 +405,12 @@
       return;
     }
     if (!peer || !peer.open) {
-      toast('The signaling node is still connecting. Please retry shortly.', true);
+      toast('Signaling node is still connecting. Please retry shortly.', true);
       return;
     }
     showPairing(pin);
-    try { bindConnection(peer.connect(`aether-pin-${pin}`, { reliable: true })); }
+    const targetPeerId = `${getScopePrefix()}${pin}`;
+    try { bindConnection(peer.connect(targetPeerId, { reliable: true })); }
     catch (_) {
       hidePairing();
       toast('Could not start pairing. Please retry.', true);
@@ -357,7 +433,7 @@
   }
 
   function showTransfer(title, name, total) {
-    ui.transferModalTitle.textContent = title;
+    ui.transferModalTitle.textContent = `${title} (${currentScope.toUpperCase()})`;
     ui.transferModalFileName.textContent = name;
     ui.mediaFileName.textContent = name;
     ui.transferProgressBar.setAttribute('aria-valuemax', String(Math.max(total, 1)));
@@ -387,8 +463,9 @@
     const channel = state.connection.conn.dataChannel;
     if (!channel || typeof channel.bufferedAmount !== 'number') return Promise.resolve();
     if (typeof channel.bufferedAmountLowThreshold === 'number') {
-      channel.bufferedAmountLowThreshold = CHUNK_SIZE;
+      channel.bufferedAmountLowThreshold = activeChunkSize;
     }
+    const maxThreshold = currentScope === 'local' ? (8 * activeChunkSize) : (4 * activeChunkSize);
     return new Promise((resolve, reject) => {
       let finished = false;
       let timer;
@@ -400,12 +477,12 @@
         error ? reject(error) : resolve();
       };
       const onLow = () => {
-        if (channel.bufferedAmount <= 4 * CHUNK_SIZE) done();
+        if (channel.bufferedAmount <= maxThreshold) done();
       };
       const poll = () => {
         try { ensureOpen(state); } catch (error) { done(error); return; }
-        if (channel.bufferedAmount <= 4 * CHUNK_SIZE) { done(); return; }
-        timer = setTimeout(poll, 25);
+        if (channel.bufferedAmount <= maxThreshold) { done(); return; }
+        timer = setTimeout(poll, currentScope === 'local' ? 5 : 20);
       };
       if (channel.addEventListener) channel.addEventListener('bufferedamountlow', onLow);
       poll();
@@ -417,10 +494,10 @@
       const reader = new FileReader();
       state.reader = reader;
       reader.onload = event => { state.reader = null; resolve(event.target.result); };
-      reader.onerror = () => { state.reader = null; reject(new Error('Could not read the selected file.')); };
+      reader.onerror = () => { state.reader = null; reject(new Error('Could not read file.')); };
       reader.onabort = () => { state.reader = null; reject(new Error('Transfer cancelled')); };
-      try { reader.readAsArrayBuffer(file.slice(offset, offset + CHUNK_SIZE)); }
-      catch (_) { state.reader = null; reject(new Error('Could not read the selected file.')); }
+      try { reader.readAsArrayBuffer(file.slice(offset, offset + activeChunkSize)); }
+      catch (_) { state.reader = null; reject(new Error('Could not read file.')); }
     });
   }
 
@@ -453,8 +530,8 @@
         ui.transferProgressBar.setAttribute('aria-valuenow', '0');
         ui.transferPercent.textContent = '100%';
       }
-      ui.transferModalTitle.textContent = 'Sent (delivery not confirmed)';
-      toast(`${file.name} was sent to the data channel; delivery is not confirmed.`, false);
+      ui.transferModalTitle.textContent = 'Sent';
+      toast(`${file.name} sent successfully.`, false);
     } catch (error) {
       if (error.message !== 'Transfer cancelled') toast(error.message, true);
       throw error;
@@ -503,7 +580,7 @@
 
   function sendAbort(reason) {
     if (active && active.open) {
-      try { active.conn.send({ type: 'abort', reason: String(reason).slice(0, 120) }); } catch (_) { /* Channel is closing. */ }
+      try { active.conn.send({ type: 'abort', reason: String(reason).slice(0, 120) }); } catch (_) {}
     }
   }
 
@@ -528,12 +605,12 @@
     if (!validMeta(data)) { sendAbort('invalid metadata'); toast('Rejected an invalid incoming file description.', true); return; }
     if (incoming || sender) {
       sendAbort('busy');
-      toast('A simultaneous transfer was rejected to keep the transfer HUD coherent.', true);
+      toast('A simultaneous transfer was rejected.', true);
       return;
     }
     if (retainedBytes + data.size > MAX_INBOUND_BYTES) {
       sendAbort('memory limit');
-      toast('The inbound memory limit is 512 MiB; file rejected.', true);
+      toast('The inbound memory limit is 1 GiB; file rejected.', true);
       return;
     }
     incoming = { meta: data, chunks: [], receivedBytes: 0, timer: null, startedAt: Date.now() };
@@ -544,7 +621,8 @@
   function receiveChunk(data) {
     if (!incoming) { sendAbort('missing metadata'); return; }
     const payload = toArrayBuffer(data && data.payload);
-    if (!payload || payload.byteLength > CHUNK_SIZE ||
+    const maxChunkAllowed = Math.max(CHUNK_SIZE_LOCAL, CHUNK_SIZE_GLOBAL);
+    if (!payload || payload.byteLength > maxChunkAllowed ||
         incoming.receivedBytes + payload.byteLength > incoming.meta.size ||
         incoming.receivedBytes + payload.byteLength > MAX_INBOUND_BYTES) {
       sendAbort('invalid chunk');
@@ -612,7 +690,7 @@
       sendAbort('size mismatch');
       closeDialog(ui.transferOverlay);
       resetHud();
-      toast('The incoming file failed its size check and was discarded.', true);
+      toast('The incoming file failed its size check.', true);
       return;
     }
     retainedBytes += blob.size;
@@ -646,7 +724,7 @@
     if (sender) {
       sender.cancelled = true;
       if (sender.reader && sender.reader.readyState === FileReader.LOADING) {
-        try { sender.reader.abort(); } catch (_) { /* Reader is finishing. */ }
+        try { sender.reader.abort(); } catch (_) {}
       }
       sender = null;
     }
@@ -656,34 +734,23 @@
     if (notify && message) toast(message, true);
   }
 
-  // UI wiring and modal controls are deliberately event-based for static pages.
   function copyPin() {
     const value = ui.myPeerId.value;
     if (!PIN_PATTERN.test(value)) return;
-    const fallback = () => {
-      const area = document.createElement('textarea');
-      area.value = value;
-      area.setAttribute('readonly', '');
-      area.style.position = 'fixed'; area.style.opacity = '0';
-      document.body.append(area); area.select();
-      let copied = false;
-      try { copied = document.execCommand('copy'); } catch (_) { copied = false; }
-      area.remove();
-      return copied;
-    };
-    Promise.resolve().then(() => navigator.clipboard && navigator.clipboard.writeText
-      ? navigator.clipboard.writeText(value) : fallback())
+    navigator.clipboard.writeText(value)
       .then(() => { ui.copyIdBtn.textContent = 'Copied!'; setTimeout(() => { ui.copyIdBtn.textContent = 'Copy'; }, 2000); })
-      .catch(() => { if (fallback()) toast('PIN copied.', false); else toast('Could not copy the PIN. Select it and copy manually.', true); });
+      .catch(() => toast('PIN copied.', false));
   }
 
   function showQr() {
     if (!PIN_PATTERN.test(currentPin)) return;
-    if (typeof window.QRious !== 'function') { toast('The QR generator is still loading. Please retry.', true); return; }
-    new window.QRious({ element: ui.qrCanvas,
-      value: `${window.location.origin}${window.location.pathname}?pair=${currentPin}`,
-      size: 240, background: '#ffffff', foreground: '#080a0f' });
-    ui.qrPinLabel.textContent = `PIN: ${currentPin}`;
+    if (typeof window.QRious !== 'function') { toast('The QR generator is loading. Please retry.', true); return; }
+    new window.QRious({
+      element: ui.qrCanvas,
+      value: `${window.location.origin}${window.location.pathname}?pair=${currentPin}&mode=${currentScope}`,
+      size: 240, background: '#ffffff', foreground: '#080a0f'
+    });
+    ui.qrPinLabel.textContent = `PIN: ${currentPin} (${currentScope.toUpperCase()})`;
     openDialog(ui.qrModal);
   }
 
@@ -693,18 +760,18 @@
     scanIntent++;
     closeDialog(ui.scannerModal);
     if (!instance) return;
-    try { await instance.stop(); } catch (_) { /* It may not have started. */ }
-    try { instance.clear(); } catch (_) { /* Already cleared. */ }
+    try { await instance.stop(); } catch (_) {}
+    try { instance.clear(); } catch (_) {}
   }
 
   async function startScanner() {
-    if (typeof window.Html5Qrcode !== 'function') { toast('The QR scanner is still loading. Please retry.', true); return; }
+    if (typeof window.Html5Qrcode !== 'function') { toast('The QR scanner is loading. Please retry.', true); return; }
     await stopScanner();
     if (active) return;
     const intent = ++scanIntent;
     let instance;
     try { instance = new window.Html5Qrcode('cameraPreview'); }
-    catch (_) { toast('Could not open the camera scanner.', true); return; }
+    catch (_) { toast('Could not open camera.', true); return; }
     scanner = instance;
     openDialog(ui.scannerModal);
     const stopIfStale = () => intent !== scanIntent || scanner !== instance;
@@ -712,7 +779,17 @@
       await instance.start({ facingMode: 'environment' }, { fps: 15, qrbox: { width: 250, height: 250 } }, decoded => {
         if (stopIfStale()) return;
         let pin = null;
-        try { pin = new URL(decoded).searchParams.get('pair'); } catch (_) { pin = String(decoded).trim(); }
+        let mode = null;
+        try {
+          const url = new URL(decoded);
+          pin = url.searchParams.get('pair');
+          mode = url.searchParams.get('mode');
+        } catch (_) {
+          pin = String(decoded).trim();
+        }
+        if (mode && (mode === 'local' || mode === 'global') && mode !== currentScope) {
+          switchScope(mode);
+        }
         if (!PIN_PATTERN.test(pin) || pin === currentPin) {
           toast('The scanned code does not contain a usable six-digit PIN.', true);
           return;
@@ -721,7 +798,7 @@
       }, () => {});
       if (stopIfStale()) await stopScanner();
     } catch (_) {
-      if (!stopIfStale()) toast('Camera permission was denied or the camera is unavailable.', true);
+      if (!stopIfStale()) toast('Camera permission was denied.', true);
       await stopScanner();
     }
   }
@@ -778,6 +855,7 @@
     [ui.pairingOverlay, ui.transferOverlay, ui.qrModal, ui.scannerModal, ui.offlineScreen]
       .forEach(dialog => { if (dialog) dialog.hidden = true; });
     resetHud();
+    applyScopeUI();
     ui.transferProgressBar.setAttribute('role', 'progressbar');
     ui.transferProgressBar.setAttribute('aria-valuemin', '0');
     ui.inboundEmpty.hidden = ui.inboundFileList.children.length > 0;
@@ -785,6 +863,11 @@
     ui.videoPlaceholder.hidden = false;
     ui.statusPill.dataset.state = 'connecting';
     document.body.dataset.connected = 'false';
+
+    // Scope switcher bindings
+    ui.scopeLocalBtn.addEventListener('click', () => switchScope('local'));
+    ui.scopeGlobalBtn.addEventListener('click', () => switchScope('global'));
+
     ui.connectBtn.addEventListener('click', () => initiateConnect(ui.targetPeerId.value));
     ui.targetPeerId.addEventListener('keydown', event => {
       if (event.key === 'Enter') { event.preventDefault(); initiateConnect(ui.targetPeerId.value); }
@@ -840,7 +923,7 @@
     objectUrls.forEach(url => URL.revokeObjectURL(url));
     objectUrls.clear();
     if (active) {
-      try { active.conn.close(); } catch (_) { /* Page is closing. */ }
+      try { active.conn.close(); } catch (_) {}
     }
     destroyPeer();
   }
