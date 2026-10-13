@@ -12,7 +12,7 @@
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <script defer src="./script.js"></script>
 </head>
-<body data-connected="false">
+<body data-connected="false" data-scope="local">
   <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
     <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
@@ -24,21 +24,48 @@
     <symbol id="icon-inbox" viewBox="0 0 24 24"><path d="m7 4-4 9v6a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6l-4-9H7Z"/><path d="M3 13h5l2 3h4l2-3h5"/></symbol>
     <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
     <symbol id="icon-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 1 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 0)"/></symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+    <symbol id="icon-wifi" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></symbol>
   </svg>
 
   <div class="app-shell">
     <header class="site-header">
-      <a class="brand" href="./" aria-label="AetherDrop home"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3C12 9 6 14 6 20a10 10 0 0 0 20 0c0-6-6-11-10-17Z"/><path d="M11 21a5 5 0 0 0 5 5"/></svg></span><span>Aether<span class="brand-light">Drop</span><span class="brand-period">.</span></span></a>
-      <div class="header-right"><span class="header-caption">A little closer. A lot simpler.</span><div id="statusPill" class="status-pill" data-state="connecting" role="status"><span class="status-dot" aria-hidden="true"></span><span id="statusText">Connecting…</span></div></div>
+      <a class="brand" href="./" aria-label="AetherDrop home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M16 3C12 9 6 14 6 20a10 10 0 0 0 20 0c0-6-6-11-10-17Z"/><path d="M11 21a5 5 0 0 0 5 5"/></svg>
+        </span>
+        <span>Aether<span class="brand-light">Drop</span><span class="brand-period">.</span></span>
+      </a>
+      <div class="header-right">
+        <!-- Capsule Mode Switcher -->
+        <div class="scope-switch-container" role="radiogroup" aria-label="Network Transmission Scope">
+          <button type="button" id="scopeLocalBtn" class="scope-btn active" role="radio" aria-checked="true" title="Ultra-Fast Local Network (LAN Only, 0 External Requests)">
+            <svg class="icon"><use href="#icon-wifi"/></svg>
+            <span>Local</span>
+          </button>
+          <button type="button" id="scopeGlobalBtn" class="scope-btn" role="radio" aria-checked="false" title="Global Internet Transmission (Cross-Network WAN)">
+            <svg class="icon"><use href="#icon-globe"/></svg>
+            <span>Global</span>
+          </button>
+        </div>
+        <div id="statusPill" class="status-pill" data-state="connecting" role="status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="statusText">Connecting…</span>
+        </div>
+      </div>
     </header>
 
     <main>
       <section class="hero command-deck" aria-labelledby="heroTitle">
         <div class="hero-copy">
-          <p class="eyebrow"><span class="tiny-orbit" aria-hidden="true"></span> DIRECT DEVICE LINK</p>
+          <p class="eyebrow"><span class="tiny-orbit" aria-hidden="true"></span> <span id="heroScopeBadge">LOCAL LAN ACCELERATED</span></p>
           <h1 id="heroTitle">Send it<br><span>straight there.</span></h1>
-          <p class="hero-description">Pair two browsers, then move files privately over a direct WebRTC connection.</p>
-          <div class="hero-details"><span><svg class="icon"><use href="#icon-shield"/></svg> Encrypted in transit</span><span class="detail-separator" aria-hidden="true"></span><span>No account needed</span></div>
+          <p class="hero-description" id="heroScopeDesc">Local mode active. Packets transfer at physical Wi-Fi/LAN interface speeds without leaving your router.</p>
+          <div class="hero-details">
+            <span><svg class="icon"><use href="#icon-shield"/></svg> Encrypted in transit</span>
+            <span class="detail-separator" aria-hidden="true"></span>
+            <span id="scopePrivacyTag">Isolated to Local Subnet</span>
+          </div>
         </div>
         <div class="connection-visual" aria-label="Direct connection visualization">
           <div class="connection-visual-grid" aria-hidden="true"></div>
@@ -48,42 +75,216 @@
           <article class="device-node device-node-local"><span class="node-kicker">THIS DEVICE</span><strong>Ready to share</strong><span class="node-led"><i></i> Browser session</span></article>
           <div class="connection-core" aria-hidden="true"><span class="core-pulse"></span><svg class="icon"><use href="#icon-link"/></svg></div>
           <article class="device-node device-node-remote"><span class="node-kicker">OTHER DEVICE</span><strong>Waiting for PIN</strong><span class="node-led"><i></i> Private route</span></article>
-          <p class="connection-caption"><span></span> SIGNAL PATH / ENCRYPTED WEBRTC</p>
+          <p class="connection-caption"><span></span> <span id="visualRouteLabel">LOCAL LINK / HIGH-BANDWIDTH LAN</span></p>
         </div>
       </section>
 
       <section class="stats-strip" aria-label="Connection principles">
-        <div><span class="stat-marker"></span><strong>DIRECT WEBRTC</strong><span>Browser to browser</span></div>
+        <div><span class="stat-marker"></span><strong id="statModeTitle">DIRECT LAN (0-NAT)</strong><span id="statModeDesc">Maximum physical bandwidth</span></div>
         <div><span class="stat-marker"></span><strong>NO ACCOUNT</strong><span>One session PIN</span></div>
-        <div><span class="stat-marker"></span><strong>FILES STAY LOCAL</strong><span>Until you send them</span></div>
+        <div><span class="stat-marker"></span><strong>FILES STAY LOCAL</strong><span>Direct memory-to-memory</span></div>
       </section>
 
       <section class="pairing-grid" aria-label="Pair your devices">
-        <article class="panel pairing-card your-device"><div class="section-heading"><div class="heading-label"><span class="step-number">01</span><h2>Your share PIN</h2></div><span class="micro-label">READY TO SHARE</span></div><p class="panel-description">Give this six-digit PIN to the other device.</p><div class="your-code-row"><label class="sr-only" for="myPeerId">Your six-digit connection code</label><input id="myPeerId" class="peer-code" type="text" readonly placeholder="— — — — — —" spellcheck="false" aria-describedby="codeHint"><button id="copyIdBtn" class="icon-button" type="button" aria-label="Copy your connection code" title="Copy code"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg><span class="button-tooltip">Copy</span></button><button id="showQrBtn" class="icon-button" type="button" aria-label="Show your connection QR code" title="Show QR code"><svg class="icon" aria-hidden="true"><use href="#icon-qr"/></svg><span class="button-tooltip">QR</span></button></div><p id="codeHint" class="field-hint"><span class="hint-dot" aria-hidden="true"></span> Fresh for this browser session.</p></article>
-        <article class="panel pairing-card their-device"><div class="section-heading"><div class="heading-label"><span class="step-number">02</span><h2>Connect a device</h2></div><button id="scanQrBtn" class="text-button scan-button" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-scan"/></svg> Scan QR</button></div><p class="panel-description">Enter their PIN to open the direct route.</p><div class="connect-row"><label class="sr-only" for="targetPeerId">Other device's six-digit connection code</label><input id="targetPeerId" class="target-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="6-digit PIN" aria-describedby="targetHint"><button id="connectBtn" class="button button-primary" type="button">Connect<svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button></div><div class="pairing-card-bottom"><p id="targetHint" class="field-hint">Works across the room or across town.</p><span id="connectedPeerBadge" class="connected-badge" hidden></span><button id="disconnectBtn" class="text-button" type="button" hidden>Disconnect</button></div></article>
+        <article class="panel pairing-card your-device">
+          <div class="section-heading">
+            <div class="heading-label"><span class="step-number">01</span><h2>Your share PIN</h2></div>
+            <span class="micro-label" id="cardScopeTag">LOCAL SCOPE</span>
+          </div>
+          <p class="panel-description">Give this six-digit PIN to the other device on your network.</p>
+          <div class="your-code-row">
+            <label class="sr-only" for="myPeerId">Your six-digit connection code</label>
+            <input id="myPeerId" class="peer-code" type="text" readonly placeholder="— — — — — —" spellcheck="false" aria-describedby="codeHint">
+            <button id="copyIdBtn" class="icon-button" type="button" aria-label="Copy your connection code" title="Copy code">
+              <svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg>
+              <span class="button-tooltip">Copy</span>
+            </button>
+            <button id="showQrBtn" class="icon-button" type="button" aria-label="Show your connection QR code" title="Show QR code">
+              <svg class="icon" aria-hidden="true"><use href="#icon-qr"/></svg>
+              <span class="button-tooltip">QR</span>
+            </button>
+          </div>
+          <p id="codeHint" class="field-hint"><span class="hint-dot" aria-hidden="true"></span> Generated for this browser session.</p>
+        </article>
+
+        <article class="panel pairing-card their-device">
+          <div class="section-heading">
+            <div class="heading-label"><span class="step-number">02</span><h2>Connect a device</h2></div>
+            <button id="scanQrBtn" class="text-button scan-button" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-scan"/></svg> Scan QR
+            </button>
+          </div>
+          <p class="panel-description">Enter their PIN to open the direct route.</p>
+          <div class="connect-row">
+            <label class="sr-only" for="targetPeerId">Other device's six-digit connection code</label>
+            <input id="targetPeerId" class="target-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="6-digit PIN" aria-describedby="targetHint">
+            <button id="connectBtn" class="button button-primary" type="button">Connect<svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button>
+          </div>
+          <div class="pairing-card-bottom">
+            <p id="targetHint" class="field-hint">Devices must use the same network mode.</p>
+            <span id="connectedPeerBadge" class="connected-badge" hidden></span>
+            <button id="disconnectBtn" class="text-button" type="button" hidden>Disconnect</button>
+          </div>
+        </article>
       </section>
 
       <section class="workspace" aria-label="File sharing workspace">
-        <article class="panel send-panel"><div class="section-heading panel-heading"><div class="heading-label"><svg class="icon muted-icon" aria-hidden="true"><use href="#icon-upload"/></svg><h2>Drop &amp; send</h2></div><span class="micro-label">DIRECT ROUTE</span></div><div id="dropZone" class="drop-zone"><div class="drop-zone-inner"><div class="drop-visual" aria-hidden="true"><div class="drop-visual-ring"></div><div class="upload-glyph"><svg class="icon"><use href="#icon-upload"/></svg></div><span class="drop-spark spark-one"></span><span class="drop-spark spark-two"></span></div><h3>Place files in the beam.</h3><p>Drag anything here, or choose files to send<br>directly to your paired device.</p><button id="browseFilesBtn" type="button" class="button button-secondary">Choose files<svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button><input id="fileInput" class="sr-only" type="file" multiple tabindex="-1" aria-label="Select files to send"><span class="drop-hint">Any file type · Multiple files welcome</span></div><div class="drop-bottom"><svg class="icon" aria-hidden="true"><use href="#icon-link"/></svg><span class="unpaired-message">Pair a device to start sharing</span><span class="paired-message">Connected and ready to share</span></div></div><div class="send-note"><svg class="icon" aria-hidden="true"><use href="#icon-shield"/></svg><p>Encrypted in transit · Nothing stored in the cloud</p></div></article>
+        <article class="panel send-panel">
+          <div class="section-heading panel-heading">
+            <div class="heading-label"><svg class="icon muted-icon" aria-hidden="true"><use href="#icon-upload"/></svg><h2>Drop &amp; send</h2></div>
+            <span class="micro-label">DIRECT ROUTE</span>
+          </div>
+          <div id="dropZone" class="drop-zone">
+            <div class="drop-zone-inner">
+              <div class="drop-visual" aria-hidden="true">
+                <div class="drop-visual-ring"></div>
+                <div class="upload-glyph"><svg class="icon"><use href="#icon-upload"/></svg></div>
+                <span class="drop-spark spark-one"></span>
+                <span class="drop-spark spark-two"></span>
+              </div>
+              <h3>Place files in the beam.</h3>
+              <p>Drag anything here, or choose files to send<br>directly to your paired device.</p>
+              <button id="browseFilesBtn" type="button" class="button button-secondary">Choose files<svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button>
+              <input id="fileInput" class="sr-only" type="file" multiple tabindex="-1" aria-label="Select files to send">
+              <span class="drop-hint">Any file type · Multiple files welcome</span>
+            </div>
+            <div class="drop-bottom">
+              <svg class="icon" aria-hidden="true"><use href="#icon-link"/></svg>
+              <span class="unpaired-message">Pair a device to start sharing</span>
+              <span class="paired-message">Connected and ready to share</span>
+            </div>
+          </div>
+          <div class="send-note">
+            <svg class="icon" aria-hidden="true"><use href="#icon-shield"/></svg>
+            <p>Encrypted in transit · Nothing stored in the cloud</p>
+          </div>
+        </article>
 
-        <div class="receive-column"><article class="panel preview-panel"><div class="section-heading panel-heading"><div class="heading-label"><svg class="icon muted-icon" aria-hidden="true"><use href="#icon-play"/></svg><h2>A first look</h2></div><span class="micro-label">VIDEO PREVIEW</span></div><div class="video-viewport-bay" id="videoViewportBay"><div class="video-stage" id="videoViewport"><video id="liveVideoPlayer" controls playsinline hidden aria-label="Received video preview"></video><div id="videoPlaceholder" class="video-placeholder"><div class="play-orbit" aria-hidden="true"><svg class="icon"><use href="#icon-play"/></svg></div><p>A little cinema, right here.</p><span>Received videos can play after the transfer.</span></div></div></div><div class="media-caption"><span class="mini-dot" aria-hidden="true"></span><p id="mediaFileName">Your next video belongs here</p><span id="videoFormatLabel">AUTO FIT</span></div></article>
-        <article class="panel inbox-panel"><div class="section-heading panel-heading"><div class="heading-label"><svg class="icon muted-icon" aria-hidden="true"><use href="#icon-inbox"/></svg><h2>Just landed</h2><span id="inboundCountBadge" class="count-badge">0</span></div><button id="clearInboundBtn" class="text-button" type="button" aria-label="Clear received files">Clear</button></div><div id="inboundFileList" class="inbound-file-list"><div id="inboundEmpty" class="inbound-empty"><span class="empty-graphic" aria-hidden="true"><svg class="icon"><use href="#icon-inbox"/></svg></span><p>Good things are on their way.</p><span>Incoming files will appear here, ready to save.</span></div></div><div class="inbox-footnote">Save what you need before closing this tab.</div></article></div>
+        <div class="receive-column">
+          <article class="panel preview-panel">
+            <div class="section-heading panel-heading">
+              <div class="heading-label"><svg class="icon muted-icon" aria-hidden="true"><use href="#icon-play"/></svg><h2>A first look</h2></div>
+              <span class="micro-label">VIDEO PREVIEW</span>
+            </div>
+            <div class="video-viewport-bay" id="videoViewportBay">
+              <div class="video-stage" id="videoViewport">
+                <video id="liveVideoPlayer" controls playsinline hidden aria-label="Received video preview"></video>
+                <div id="videoPlaceholder" class="video-placeholder">
+                  <div class="play-orbit" aria-hidden="true"><svg class="icon"><use href="#icon-play"/></svg></div>
+                  <p>A little cinema, right here.</p>
+                  <span>Received videos can play after the transfer.</span>
+                </div>
+              </div>
+            </div>
+            <div class="media-caption">
+              <span class="mini-dot" aria-hidden="true"></span>
+              <p id="mediaFileName">Your next video belongs here</p>
+              <span id="videoFormatLabel">AUTO FIT</span>
+            </div>
+          </article>
+
+          <article class="panel inbox-panel">
+            <div class="section-heading panel-heading">
+              <div class="heading-label"><svg class="icon muted-icon" aria-hidden="true"><use href="#icon-inbox"/></svg><h2>Just landed</h2><span id="inboundCountBadge" class="count-badge">0</span></div>
+              <button id="clearInboundBtn" class="text-button" type="button" aria-label="Clear received files">Clear</button>
+            </div>
+            <div id="inboundFileList" class="inbound-file-list">
+              <div id="inboundEmpty" class="inbound-empty">
+                <span class="empty-graphic" aria-hidden="true"><svg class="icon"><use href="#icon-inbox"/></svg></span>
+                <p>Good things are on their way.</p>
+                <span>Incoming files will appear here, ready to save.</span>
+              </div>
+            </div>
+            <div class="inbox-footnote">Save what you need before closing this tab.</div>
+          </article>
+        </div>
       </section>
 
-      <footer class="site-footer"><div class="footer-intro"><span class="footer-shield"><svg class="icon" aria-hidden="true"><use href="#icon-shield"/></svg></span><div><h2>A direct connection. An honest promise.</h2><p>Files move between browsers, not into a cloud drive.</p></div></div><div class="privacy-grid"><p><strong>A little help to meet.</strong> Public signaling is required to connect your browsers. File contents travel over encrypted WebRTC.</p><p><strong>A code, not an identity.</strong> The PIN helps devices find each other; it does not authenticate a person. Share it with someone you trust.</p><p><strong>Keep your tab open.</strong> Transfers use browser memory, so large files can reach your device's limits. Video playback starts after receipt.</p></div><div class="footer-bottom"><span>AetherDrop<span class="brand-period">.</span></span><span>Less distance. More possibility.</span><span class="footer-protocol">BUILT ON WEBRTC <span aria-hidden="true">↗</span></span></div></footer>
+      <footer class="site-footer">
+        <div class="footer-intro">
+          <span class="footer-shield"><svg class="icon" aria-hidden="true"><use href="#icon-shield"/></svg></span>
+          <div>
+            <h2>A direct connection. An honest promise.</h2>
+            <p>Files move between browsers, not into a cloud drive.</p>
+          </div>
+        </div>
+        <div class="privacy-grid">
+          <p><strong>Local vs Global Control.</strong> Local mode stays strictly within your router subnet with zero external relay exposure. Global mode leverages STUN routing for cross-network reach.</p>
+          <p><strong>A code, not an identity.</strong> The PIN helps devices find each other; it does not authenticate a person. Share it with someone you trust.</p>
+          <p><strong>Keep your tab open.</strong> Transfers use browser memory, so large files can reach your device's limits. Video playback starts after receipt.</p>
+        </div>
+        <div class="footer-bottom">
+          <span>AetherDrop<span class="brand-period">.</span></span>
+          <span>Less distance. More possibility.</span>
+          <span class="footer-protocol">BUILT ON WEBRTC <span aria-hidden="true">↗</span></span>
+        </div>
+      </footer>
     </main>
   </div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="false"></div>
 
-  <div id="qrModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="qrTitle" tabindex="-1" hidden><div class="modal-card qr-card"><button id="closeQrBtn" class="icon-button modal-close" type="button" aria-label="Close QR code"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button><p class="eyebrow">THE SCENIC SHORTCUT</p><h2 id="qrTitle">One scan. A little closer.</h2><p>Scan this code with AetherDrop on the other device.</p><div class="qr-frame"><canvas id="qrCanvas" aria-label="QR code for your connection"></canvas></div><p id="qrPinLabel" class="qr-pin"></p><p class="modal-note">Only share your code with someone you trust.</p></div></div>
+  <div id="qrModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="qrTitle" tabindex="-1" hidden>
+    <div class="modal-card qr-card">
+      <button id="closeQrBtn" class="icon-button modal-close" type="button" aria-label="Close QR code"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+      <p class="eyebrow">THE SCENIC SHORTCUT</p>
+      <h2 id="qrTitle">One scan. A little closer.</h2>
+      <p>Scan this code with AetherDrop on the other device.</p>
+      <div class="qr-frame"><canvas id="qrCanvas" aria-label="QR code for your connection"></canvas></div>
+      <p id="qrPinLabel" class="qr-pin"></p>
+      <p class="modal-note">Only share your code with someone you trust.</p>
+    </div>
+  </div>
 
-  <div id="scannerModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="scannerTitle" tabindex="-1" hidden><div class="modal-card scanner-card"><button id="closeScannerBtn" class="icon-button modal-close" type="button" aria-label="Close QR scanner"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button><p class="eyebrow">FIND YOUR OTHER HALF</p><h2 id="scannerTitle">Point. Scan. Connect.</h2><p>Point your camera at the other device's AetherDrop QR code.</p><div class="scanner-hud" aria-hidden="true"><span class="scanner-hud-corner"></span><span class="scanner-hud-line"></span><span class="scanner-hud-readout">SIGNAL / READY</span></div><div id="cameraPreview" class="camera-preview"></div><p class="modal-note">Camera access is used to read the connection code.</p></div></div>
+  <div id="scannerModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="scannerTitle" tabindex="-1" hidden>
+    <div class="modal-card scanner-card">
+      <button id="closeScannerBtn" class="icon-button modal-close" type="button" aria-label="Close QR scanner"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+      <p class="eyebrow">FIND YOUR OTHER HALF</p>
+      <h2 id="scannerTitle">Point. Scan. Connect.</h2>
+      <p>Point your camera at the other device's AetherDrop QR code.</p>
+      <div class="scanner-hud" aria-hidden="true"><span class="scanner-hud-corner"></span><span class="scanner-hud-line"></span><span class="scanner-hud-readout">SIGNAL / READY</span></div>
+      <div id="cameraPreview" class="camera-preview"></div>
+      <p class="modal-note">Camera access is used to read the connection code.</p>
+    </div>
+  </div>
 
-  <div id="pairingOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="pairingModalTitle" aria-describedby="pairingModalSub" tabindex="-1" hidden><div class="modal-card pairing-modal"><div class="connection-orbit" aria-hidden="true"><span></span><svg class="icon"><use href="#icon-link"/></svg></div><p class="eyebrow">BRIDGING THE DISTANCE</p><h2 id="pairingModalTitle">Finding your device…</h2><p id="pairingModalSub">Keep AetherDrop open on both devices while they connect.</p><button id="cancelPairingBtn" class="button button-secondary" type="button">Cancel connection</button></div></div>
+  <div id="pairingOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="pairingModalTitle" aria-describedby="pairingModalSub" tabindex="-1" hidden>
+    <div class="modal-card pairing-modal">
+      <div class="connection-orbit" aria-hidden="true"><span></span><svg class="icon"><use href="#icon-link"/></svg></div>
+      <p class="eyebrow">BRIDGING THE DISTANCE</p>
+      <h2 id="pairingModalTitle">Finding your device…</h2>
+      <p id="pairingModalSub">Keep AetherDrop open on both devices while they connect.</p>
+      <button id="cancelPairingBtn" class="button button-secondary" type="button">Cancel connection</button>
+    </div>
+  </div>
 
-  <div id="transferOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="transferModalTitle" tabindex="-1" hidden><div class="modal-card transfer-card"><p class="eyebrow">TAKING THE DIRECT ROUTE</p><h2 id="transferModalTitle">A little closer with every byte.</h2><p id="transferModalFileName" class="transfer-file-name">Preparing your file…</p><div class="transfer-progress-track"><div id="transferProgressBar" class="transfer-progress-bar" role="progressbar" aria-label="File transfer progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="width: 0%"></div></div><div class="transfer-stats"><strong id="transferPercent">0%</strong><span id="transferSpeed">Preparing…</span></div><p id="transferBytes" class="transfer-bytes">Waiting for transfer</p><p class="modal-note">Keep both tabs open until the transfer is complete.</p><button id="cancelTransferBtn" class="button button-secondary" type="button">Cancel transfer</button></div></div>
+  <div id="transferOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="transferModalTitle" tabindex="-1" hidden>
+    <div class="modal-card transfer-card">
+      <p class="eyebrow">TAKING THE DIRECT ROUTE</p>
+      <h2 id="transferModalTitle">A little closer with every byte.</h2>
+      <p id="transferModalFileName" class="transfer-file-name">Preparing your file…</p>
+      <div class="transfer-progress-track">
+        <div id="transferProgressBar" class="transfer-progress-bar" role="progressbar" aria-label="File transfer progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="width: 0%"></div>
+      </div>
+      <div class="transfer-stats">
+        <strong id="transferPercent">0%</strong>
+        <span id="transferSpeed">Preparing…</span>
+      </div>
+      <p id="transferBytes" class="transfer-bytes">Waiting for transfer</p>
+      <p class="modal-note">Keep both tabs open until the transfer is complete.</p>
+      <button id="cancelTransferBtn" class="button button-secondary" type="button">Cancel transfer</button>
+    </div>
+  </div>
 
-  <div id="offlineScreen" class="modal-overlay offline-overlay" role="dialog" aria-modal="true" aria-labelledby="offlineTitle" tabindex="-1" hidden><div class="modal-card"><div class="offline-symbol" aria-hidden="true"><svg class="icon"><use href="#icon-link"/></svg></div><p class="eyebrow">A MOMENT APART</p><h2 id="offlineTitle">Let's get you reconnected.</h2><p>AetherDrop needs an internet connection and access to its signaling service to bring your devices together.</p><button id="retryOfflineBtn" class="button button-primary" type="button">Try again<svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button><p class="modal-note">Check your connection, then give it another go.</p></div></div>
+  <div id="offlineScreen" class="modal-overlay offline-overlay" role="dialog" aria-modal="true" aria-labelledby="offlineTitle" tabindex="-1" hidden>
+    <div class="modal-card">
+      <div class="offline-symbol" aria-hidden="true"><svg class="icon"><use href="#icon-link"/></svg></div>
+      <p class="eyebrow">A MOMENT APART</p>
+      <h2 id="offlineTitle">Let's get you reconnected.</h2>
+      <p>AetherDrop needs access to network signaling to bring your devices together.</p>
+      <button id="retryOfflineBtn" class="button button-primary" type="button">Try again<svg class="icon" aria-hidden="true"><use href="#icon-arrow"/></svg></button>
+      <p class="modal-note">Check your connection, then give it another go.</p>
+    </div>
+  </div>
 </body>
 </html>
